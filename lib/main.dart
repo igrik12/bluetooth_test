@@ -205,6 +205,16 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                   style: Theme.of(context).textTheme.headline5),
               Text('$_isAdvertising',
                   style: Theme.of(context).textTheme.subtitle1),
+              Divider(
+                height: 20,
+              ),
+              Text(
+                'UUID: $uuid',
+                style: TextStyle(fontSize: 16),
+              ),
+              Divider(
+                height: 20,
+              ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
