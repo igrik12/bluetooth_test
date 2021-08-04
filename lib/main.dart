@@ -1,15 +1,53 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:beacon_broadcast/beacon_broadcast.dart';
 import 'package:beacons_plugin/beacons_plugin.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_blue/flutter_blue.dart';
 
-void main() {
+void onStart() {
   WidgetsFlutterBinding.ensureInitialized();
+  final service = FlutterBackgroundService();
+  service.onDataReceived.listen((event) {
+    print(event);
+    if (event!["action"] == "setAsForeground") {
+      service.setForegroundMode(true);
+      return;
+    }
+
+    if (event["action"] == "setAsBackground") {
+      service.setForegroundMode(false);
+    }
+
+    if (event["action"] == "stopService") {
+      service.stopBackgroundService();
+    }
+  });
+
+  // bring to foreground
+  service.setForegroundMode(true);
+  Timer.periodic(Duration(seconds: 1), (timer) async {
+    if (!(await service.isServiceRunning())) timer.cancel();
+    service.setNotificationInfo(
+      title: "My App Service",
+      content: "Updated at ${DateTime.now()}",
+    );
+
+    service.sendData(
+      {"current_date": DateTime.now().toIso8601String()},
+    );
+  });
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  FlutterBackgroundService.initialize(onStart);
   runApp(MyApp());
 }
 
@@ -18,14 +56,16 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Wave Demo',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: MyHomePage(title: 'Flutter Demo Home Page'),
+      home: MyHomePage(title: 'Wave Home Page'),
     );
   }
 }
+
+FirebaseFirestore firestore = FirebaseFirestore.instance;
 
 class MyHomePage extends StatefulWidget {
   MyHomePage({Key? key, required this.title}) : super(key: key);
@@ -45,13 +85,13 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
       StreamController<String>.broadcast();
   final ScrollController _scrollController = ScrollController();
 
-  static String uuid =
-      '39ED98FF-2900-441A-802F-9C398FC199D${new Random().nextInt(9)}';
+  String uuid = 'unknown';
+  CollectionReference users = FirebaseFirestore.instance.collection('users');
   static const int majorId = 1;
   static const int minorId = 100;
   static const int transmissionPower = -59;
   static const String identifier = 'com.example.myDeviceRegion';
-  static const AdvertiseMode advertiseMode = AdvertiseMode.lowPower;
+  static const AdvertiseMode advertiseMode = AdvertiseMode.balanced;
   static const String layout = BeaconBroadcast.ALTBEACON_LAYOUT;
   static const int manufacturerId = 0x0118;
   static const List<int> extraData = [100];
@@ -63,6 +103,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
 
   FlutterBlue flutterBlue = FlutterBlue.instance;
   List<String> items = [];
+  String text = "Stop Service";
 
   String _beaconResult = 'Not Scanned Yet.';
 
@@ -72,6 +113,9 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance?.addObserver(this);
     initPlatformState();
     initBroadcaster();
+    getUserId(email: "blob@blob.com").then((id) => setState(() {
+          uuid = id;
+        }));
   }
 
   @override
@@ -95,6 +139,12 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
         _isAdvertising = isAdvertising;
       });
     });
+  }
+
+  Future<String> getUserId({@required String? email}) async {
+    var results = await users.where('email', isEqualTo: email).get();
+    print(results.size);
+    return results.docs[0].id;
   }
 
   void startBroadcast() async {
@@ -188,95 +238,157 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
-      body: SingleChildScrollView(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Text('Is transmission supported?',
-                  style: Theme.of(context).textTheme.headline5),
-              Text('$_isTransmissionSupported',
-                  style: Theme.of(context).textTheme.subtitle1),
-              Container(height: 16.0),
-              Text('Is beacon started?',
-                  style: Theme.of(context).textTheme.headline5),
-              Text('$_isAdvertising',
-                  style: Theme.of(context).textTheme.subtitle1),
-              Divider(
-                height: 20,
-              ),
-              Text(
-                'UUID: $uuid',
-                style: TextStyle(fontSize: 16),
-              ),
-              Divider(
-                height: 20,
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton(
-                    onPressed: () async {
-                      if (isRunning) {
-                        await stopScanning();
-                      } else {
-                        initPlatformState();
-                        startScanning();
+        appBar: AppBar(
+          title: Text(widget.title),
+        ),
+        body: SingleChildScrollView(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Text('Is beacon started?',
+                    style: Theme.of(context).textTheme.headline5),
+                Text('$_isAdvertising',
+                    style: Theme.of(context).textTheme.subtitle1),
+                Divider(
+                  height: 20,
+                ),
+                TextField(),
+                StreamBuilder<Map<String, dynamic>?>(
+                  stream: FlutterBackgroundService().onDataReceived,
+                  builder: (context, snapshot) {
+                    print(snapshot.hasData);
+                    if (!snapshot.hasData) {
+                      return Center(
+                        child: CircularProgressIndicator(),
+                      );
+                    }
+
+                    final data = snapshot.data!;
+                    DateTime? date = DateTime.tryParse(data["current_date"]);
+                    return Text(date.toString());
+                  },
+                ),
+                ElevatedButton(
+                  child: Text("Foreground Mode"),
+                  onPressed: () {
+                    FlutterBackgroundService()
+                        .sendData({"action": "setAsForeground"});
+                  },
+                ),
+                ElevatedButton(
+                  child: Text("Background Mode"),
+                  onPressed: () {
+                    FlutterBackgroundService()
+                        .sendData({"action": "setAsBackground"});
+                  },
+                ),
+                ElevatedButton(
+                  child: Text(text),
+                  onPressed: () async {
+                    var isRunning =
+                        await FlutterBackgroundService().isServiceRunning();
+                    if (isRunning) {
+                      FlutterBackgroundService().sendData(
+                        {"action": "stopService"},
+                      );
+                    } else {
+                      FlutterBackgroundService.initialize(onStart);
+                    }
+                    if (!isRunning) {
+                      text = 'Stop Service';
+                    } else {
+                      text = 'Start Service';
+                    }
+                    setState(() {});
+                  },
+                ),
+                FutureBuilder<String>(
+                    future: getUserId(email: "blob@blob.com"),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData) {
+                        return Text(
+                          'UUID: ${snapshot.data}',
+                          style: TextStyle(fontSize: 16),
+                        );
                       }
-                      setState(() {
-                        isRunning = !isRunning;
-                      });
-                    },
-                    child: Text(isRunning ? 'Stop Scanning' : 'Start Scanning',
-                        style: TextStyle(fontSize: 20)),
-                  ),
-                  Visibility(
-                    visible: _results.isNotEmpty,
-                    child: Padding(
-                      padding: const EdgeInsets.all(2.0),
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          setState(() {
-                            _results.clear();
-                          });
-                        },
-                        child: Text("Clear Results",
-                            style: TextStyle(fontSize: 20)),
+                      return Text(
+                        'UUID: Unable to from DB',
+                        style: TextStyle(fontSize: 16),
+                      );
+                    }),
+                Divider(
+                  height: 20,
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () async {
+                        if (isRunning) {
+                          await stopScanning();
+                        } else {
+                          initPlatformState();
+                          startScanning();
+                        }
+                        setState(() {
+                          isRunning = !isRunning;
+                        });
+                      },
+                      child: Text(
+                          isRunning ? 'Stop Scanning' : 'Start Scanning',
+                          style: TextStyle(fontSize: 20)),
+                    ),
+                    Visibility(
+                      visible: _results.isNotEmpty,
+                      child: Padding(
+                        padding: const EdgeInsets.all(2.0),
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            setState(() {
+                              _results.clear();
+                            });
+                          },
+                          child: Text("Clear Results",
+                              style: TextStyle(fontSize: 20)),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton(
-                      onPressed: startBroadcast,
-                      child: Text('Start broadcast')),
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: ElevatedButton(
-                        onPressed: stopBroadcast,
-                        child: Text('Stop broadcast')),
-                  ),
-                ],
-              ),
-              SizedBox(
-                height: 20.0,
-              ),
-              Row(
-                children: [
-                  Expanded(child: _buildResultsList()),
-                ],
-              )
-            ],
+                  ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton(
+                        onPressed: startBroadcast,
+                        child: Text('Start broadcast')),
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: ElevatedButton(
+                          onPressed: stopBroadcast,
+                          child: Text('Stop broadcast')),
+                    ),
+                  ],
+                ),
+                SizedBox(
+                  height: 20.0,
+                ),
+                Row(
+                  children: [
+                    Expanded(child: _buildResultsList()),
+                  ],
+                )
+              ],
+            ),
           ),
         ),
-      ),
-    );
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            FlutterBackgroundService().sendData({
+              "hello": "world",
+            });
+          },
+        ));
   }
 
   Widget _buildResultsList() {
@@ -299,7 +411,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
               DateFormat('yyyy-MM-dd – kk:mm:ss.SSS').format(now);
           final item = ListTile(
               title: Text(
-                "Time: $formattedDate\n${_results[index]}",
+                "Time: $formattedDate\n${_results[0]}",
                 textAlign: TextAlign.justify,
                 style: Theme.of(context).textTheme.headline4?.copyWith(
                       fontSize: 14,

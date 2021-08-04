@@ -1,4 +1,4 @@
-package com.example.bluetooth_test
+package com.lamor.walk
 
 import io.flutter.embedding.android.FlutterActivity
 

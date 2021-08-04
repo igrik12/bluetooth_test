@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "95944766810",
+    "project_id": "wave-964e9",
+    "storage_bucket": "wave-964e9.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:95944766810:android:b280d3a3fcf4ca3be2ef63",
+        "android_client_info": {
+          "package_name": "com.lamor.walk"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "95944766810-lnc54of5bh2cq8dgvqjducaog9eobcas.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvt-eUKorrQN_7vVxaer-8kMhr9DWGSRQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "95944766810-lnc54of5bh2cq8dgvqjducaog9eobcas.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
